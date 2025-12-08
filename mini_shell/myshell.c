@@ -25,7 +25,7 @@ int main() {
     	char *ptr = strtok(in, " "); // strtok(분리하고자하는 문자열, 구분자로 사용할 문자들의 집합을 가르키는 문자열)
 		// 1. 자른 단어를 배열에 차곡차곡 담는다
         while (ptr!=NULL){                  
-                args[i] == ptr;
+                args[i] = ptr;
                 i++;                                  
 			    ptr = strtok(NULL, " "); // in에 마지막 부분이 아무것도 없을때
                 }
