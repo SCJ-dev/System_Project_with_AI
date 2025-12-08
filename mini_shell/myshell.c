@@ -32,6 +32,20 @@ int main() {
         args[i] = NULL;// 한 명령어가 종료
                 
         if (i == 0) continue; // 명령어가 없으면 넘겨라
+
+		if(args[0] == NULL) continue; // enter만 쳤을 경우 그냥 넘어
+
+		if(strcmp(args[0], "cd")) == 0){ // 만약 첫 단어가 "cd"라면?
+			if(args[1] == NULL) { //  이동할 경로가 없으면 에러
+				printf("ERROR : Enter directory");
+			}
+				//chdir(경로) : 실제 리눅스 경로르 변경하는 시스템 함수
+				//파일을 찾으면 0, 못찾으면 -1 반환
+			else if(chdir(args[1]) != 0){
+				printf("ERROR : Directory Not Found");
+			}
+			continue; // cd는 부모가 직접 했으니, 밑에 fork()는 건너뛰고 다시 입력받으러 감
+		}	
                 
         pid_t pid = fork(); // fork는 현재 프로세스를 복제함, pid_t는 그냥 프로세스 번호 담는 int형 수
                 
@@ -43,5 +57,6 @@ int main() {
         else{
             wait(NULL); // 부모프로세스 : 자식이 끝날 때까지 기다림
         }
-        }
+    }
+	return 0;
 }
