@@ -16,7 +16,14 @@ int main() {
 		printf("program off\n");
 		break;
 		}
-		printf("your input command : %s\n", in);
-      
+                char *ptr = strtok(in, " ");
+                
+                int i = 0;
+                while (ptr!=NULL){                  
+                  printf("Token[%d] : %s\n", i, ptr);
+                  i++;
+                
+                  ptr = strtok(NULL, " ");
+                }
         }
 }
