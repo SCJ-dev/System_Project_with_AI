@@ -37,12 +37,12 @@ int main() {
 
 		if(strcmp(args[0], "cd") == 0){ // 만약 첫 단어가 "cd"라면?
 			if(args[1] == NULL) { //  이동할 경로가 없으면 에러
-				printf("ERROR : Enter directory");
+				printf("ERROR : Enter directory\n");
 			}
 				//chdir(경로) : 실제 리눅스 경로르 변경하는 시스템 함수
 				//파일을 찾으면 0, 못찾으면 -1 반환
 			else if(chdir(args[1]) != 0){
-				printf("ERROR : Directory Not Found");
+				printf("ERROR : Directory Not Found\n");
 			}
 			continue; // cd는 부모가 직접 했으니, 밑에 fork()는 건너뛰고 다시 입력받으러 감
 		}	
