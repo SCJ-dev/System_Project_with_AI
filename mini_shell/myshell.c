@@ -35,7 +35,7 @@ int main() {
 
 		if(args[0] == NULL) continue; // enter만 쳤을 경우 그냥 넘어
 
-		if(strcmp(args[0], "cd")) == 0){ // 만약 첫 단어가 "cd"라면?
+		if(strcmp(args[0], "cd") == 0){ // 만약 첫 단어가 "cd"라면?
 			if(args[1] == NULL) { //  이동할 경로가 없으면 에러
 				printf("ERROR : Enter directory");
 			}
@@ -51,7 +51,7 @@ int main() {
                 
         if (pid == 0){ // 자식 프로세스 : 여기서 실제 명령어 수행
 			execvp(args[0], args); // execvp(실행하려는 변수명, 인수목록)
-            printf("ERROR : Comand Not Found\n");
+            printf("ERROR : Command Not Found\n");
             return 1; // 자식이 죽음 return 0 제외하면 오류 발생
             }
         else{
