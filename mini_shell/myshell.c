@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h> // fork, execvp
+#include <sys/wait.h> // wait
 
 int main() {
 
@@ -16,14 +18,28 @@ int main() {
 		printf("program off\n");
 		break;
 		}
-                char *ptr = strtok(in, " ");
-                
+                          
+                char *args[10];                
                 int i = 0;
+                char *ptr = strtok(in, " ");
                 while (ptr!=NULL){                  
-                  printf("Token[%d] : %s\n", i, ptr);
-                  i++;
-                
+                  args[i] == ptr;
+                  i++;                
                   ptr = strtok(NULL, " ");
+                }
+                args[i] == NULL;// command end
+                
+                if (i == 0) continue;
+                
+                pid_t pid = fork();
+                
+                if (pid == 0){
+                  execvp(args[0], args);
+                  printf("ERROR : Comand Not Found\n");
+                  return 1;
+                }
+                else{
+                  wait(NULL);
                 }
         }
 }
