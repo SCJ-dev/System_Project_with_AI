@@ -55,6 +55,7 @@ int main(){
 
     // 8. 1초 쉬기
     sleep(1);
+    }
   }
   return 0;
 }
