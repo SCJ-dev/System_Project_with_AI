@@ -42,7 +42,7 @@ int main(){
       printf("======================\n");
       printf(" CPU 사용률: %.1f %%\n", tot);
       printf("======================\n");
-      if(tot >= 1.0){
+      if(tot >= 70.0){
           printf("[경고] PC가 뜨겁습니다 🔥\n");
       } else {
           printf("[안정] 온도가 안정적입니다 🍀\n");
