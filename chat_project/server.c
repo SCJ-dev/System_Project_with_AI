@@ -49,7 +49,7 @@ int main(){
   if(listen(myphone, 5) == -1){
     printf("Listen Error Try Again\n");
   }
-  printf("✉️ 채팅 서버 대기 중...(포트 : 9000)\n");
+  printf(" ✉️ 채팅 서버 대기 중...(포트 : 9000)\n");
 
   // 6. 수화기 돌기 (accept함수 - 여기서 멈춰있음!)
   // 친구가 연결 요청하면 'frephone'라는 새로운 소켓을 만들어줌(이걸로 대화함)
