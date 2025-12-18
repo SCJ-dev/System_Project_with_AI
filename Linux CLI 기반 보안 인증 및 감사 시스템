@@ -6,7 +6,7 @@ void login(const char *id, const char *result){
   FILE *fp = fopen("access.log", "a");
   if(fp == NULL) return;
   fprintf(fp, "%s ID : %s\n", result, id);
-  fclose;
+  fclose(fp);
 }
 
 int main() {
