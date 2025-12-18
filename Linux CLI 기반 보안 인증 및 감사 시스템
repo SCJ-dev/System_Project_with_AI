@@ -32,8 +32,8 @@ int main() {
       } else {
         printf("비밀번호가 틀렸습니다.\n");
         login(usr_id, "로그인 실패");
-        i++;
       }
+      i++;
     }
     if (i >= 3) {
       printf("5초 후에 다시 시도해주세요.\n");
