@@ -3,23 +3,23 @@
 #include <unistd.h> // sleep 사용시 필요한 헤더파일일
 
 void login(const char *id, const char *result){
-  FILE = fopen("access.log", "a");
+  FILE *fp = fopen("access.log", "a");
   if(fp == NULL) return;
   fprintf(fp, "%s ID : %s\n", result, id);
   fclose;
 }
 
 int main() {
-  char Id[100] = "admin", usr_id[100];
+  char ID[100] = "admin", usr_id[100];
   int PW = 1234, usr_pw;
   int i = 0;
 
-  continue(1){
+  while(1){
     printf("아이디를 입력하세요 : ");
     scanf("%s", usr_id);
   
     printf("비밀번호를 입력하세요 : ");
-    scnaf("%d", &usr_pw);
+    scanf("%d", &usr_pw);
   
     if(strcmp(ID, usr_id) == 0 && PW == usr_pw){
       printf("로그인 되었습니다.\n");
