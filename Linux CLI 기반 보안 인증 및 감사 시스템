@@ -1,0 +1,47 @@
+#include <stdio.h>
+#include <string.h> // strcmp사용시 필요한 해더파일
+#include <unistd.h> // sleep 사용시 필요한 헤더파일일
+
+void login(const char *id, const char *result){
+  FILE = fopen("access.log", "a");
+  if(fp == NULL) return;
+  fprintf(fp, "%s ID : %s\n", result, id);
+  fclose;
+}
+
+int main() {
+  char Id[100] = "admin", usr_id[100];
+  int PW = 1234, usr_pw;
+  int i = 0;
+
+  continue(1){
+    printf("아이디를 입력하세요 : ");
+    scanf("%s", usr_id);
+  
+    printf("비밀번호를 입력하세요 : ");
+    scnaf("%d", &usr_pw);
+  
+    if(strcmp(ID, usr_id) == 0 && PW == usr_pw){
+      printf("로그인 되었습니다.\n");
+      login(usr_id, "로그인 확인");
+      break;
+    } else {
+      if(strcmp(ID, usr_id) != 0){
+        printf("아이디가 틀렸습니다.\n");
+        login(usr_id, "로그인 실패");
+      } else {
+        printf("비밀번호가 틀렸습니다.\n");
+        login(usr_id, "로그인 실패");
+        i++;
+      }
+    }
+    if (i >= 3) {
+      printf("5초 후에 다시 시도해주세요.\n");
+      sleep(5);
+      i = 0;
+    }
+  }
+  return 0;
+}
+
+
