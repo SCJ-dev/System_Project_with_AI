@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h> // strcmp사용시 필요한 해더파일
-#include <unistd.h> // sleep 사용시 필요한 헤더파일일
+#include <unistd.h> // sleep 사용시 필요한 헤더파일
 
 void login(const char *id, const char *result){ // 입력한 id와 로그인 결과에 대한 함수 선언
   FILE *fp = fopen("access.log", "a"); // FILE 자료형을 갖는 포인터 변수 fp를 선언하고 fp변수에서 access.log파일을 만들고 모드는 a(추가 쓰기)로 지정한다
