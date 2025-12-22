@@ -1,0 +1,224 @@
+#include <stdio.h> 
+#include <string.h> //strcmp, strlen 문자열 처리 관련 헤더파일
+#include <unistd.h> // sleep함수 관련 헤더파일
+#include <time.h> // 시간 관련 헤더파일
+
+#ifdef USE_DB
+#include <mariadb/mysql.h> // DB 관련 헤더파일
+#endif
+
+//--------------------------시간 관련 로그-----------------------------
+void get_current_time(char *buf, size_t size) { 
+    time_t now = time(NULL); // 현재 시간을 초단위로 저장
+    struct tm *t = localtime(&now); // time함수에 저장 되어 있는 것을 구조체형태로 변환
+    if(!t){
+        snprintf(buf, size, "00-00-00 00:00:00"); // t에 아무것도 저장되어있지 않으면 buf에 해당 문자열 저장
+        return;
+    }
+    strftime(buf, size, "%y-%m-%d %H:%M:%S", t); // snprintf = 구조체를 문자 형태로 변환
+}
+
+//-------------------------DB 관련 로그---------------------------------
+#ifdef USE_DB
+static MYSQL *g_conn = NULL;
+
+static int db_init(void){
+    g_conn = mysql_init(NULL);
+    if(!g_conn) return 0;
+
+    if(!mysql_real_connect(g_conn, "127.0.0.1", "secapp", "1234",
+                           "security_project", 0, NULL, 0)){
+        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn));
+        mysql_close(g_conn);
+        g_conn = NULL;
+        return 0;
+    }
+    return 1;
+}
+
+static void db_close(void){
+    if(g_conn) {
+        mysql_close(g_conn);
+        g_conn = NULL;
+    }
+}
+
+static void db_log_access(const char *user_id, const char *ip_addr, const char *result){
+    if(!g_conn) return;
+
+    char esc_id[128];
+    unsigned long id_len = strlen(user_id);
+    if(id_len > 60) id_len = 60;
+    mysql_real_escape_string(g_conn, esc_id, user_id, id_len);
+
+    char query[512];
+    snprintf(query, sizeof(query),
+             "INSERT INTO ACCESS_LOG (USER_ID, IP_ADDR, RESULT) VALUES ('%s','%s','%s')",
+             esc_id, ip_addr, result);
+
+    if(mysql_query(g_conn, query)){
+        fprintf(stderr, "[DB] insert error : %s\n", mysql_error(g_conn));
+    }
+}
+
+/*
+ * return:
+ *  1 : ID 존재 (out_pw/out_name 채움)
+ *  0 : ID 없음
+ * -1 : DB 에러
+ */
+static int db_fetch_user(const char *user_id,
+                         char *out_pw, size_t out_pw_sz,
+                         char *out_name, size_t out_name_sz) {
+    if(!g_conn) return -1;
+
+    char esc_id[128];
+    unsigned long id_len = strlen(user_id);
+    if(id_len > 60) id_len = 60;
+    mysql_real_escape_string(g_conn, esc_id, user_id, id_len);
+
+    char query[256];
+    // 공백 버그 수정
+    snprintf(query, sizeof(query),
+             "SELECT PASSWORD, NAME FROM USER_TB WHERE ID='%s' LIMIT 1",
+             esc_id);
+
+    if(mysql_query(g_conn, query)){
+        fprintf(stderr, "[DB] select error : %s\n", mysql_error(g_conn));
+        return -1;
+    }
+
+    MYSQL_RES *res = mysql_store_result(g_conn);
+    if(!res){
+        fprintf(stderr, "[DB] store_result error : %s\n", mysql_error(g_conn));
+        return -1;
+    }
+
+    MYSQL_ROW row = mysql_fetch_row(res);
+    if(!row){
+        mysql_free_result(res);
+        return 0;
+    }
+
+    snprintf(out_pw, out_pw_sz, "%s", row[0] ? row[0] : "");
+    snprintf(out_name, out_name_sz, "%s", row[1] ? row[1] : "");
+    mysql_free_result(res);
+    return 1;
+}
+#endif
+
+//------------------------파일 관련 로그-------------------------------------
+void login(const char *id, const char *result){
+    FILE *fp = fopen("access.log", "a"); // access.log라는 새파일을 만듬(a = 가장 뒤에 글을 추가), 만약 파일이 없을 시 생성
+    if(fp == NULL) return; // 파일 열기 실패 시 종료료
+
+    char time_buf[32];
+    get_current_time(time_buf, sizeof(time_buf)); 
+
+    fprintf(fp, "TIME : %s IP : LOCALHOST RESULT : %s ID : %s\n", time_buf, result, id); // access.log에 해당 내용으로 저장
+    fclose(fp);
+
+#ifdef USE_DB
+    const char *db_result = result;
+
+    // DB에는 SUCCESS/FAIL로 통일 (뷰/분석에 유리)
+    if(strcmp(result, "FAIL_ID") == 0 || strcmp(result, "FAIL_PW") == 0 || strcmp(result, "FAIL_DB") == 0) {
+        db_result = "FAIL"; // FAIL_ID, FAIL_PW, FAIL_DB는 DB에 FAIL로 통일해서 저 
+    }
+
+    db_log_access(id, "127.0.0.1", db_result);
+#endif
+}
+//----------------------------main-----------------------------
+int main(void) {
+    char ID[100], usr_id[100]; // 최대 99개의 문자를 입력 가능
+    char PW[100], usr_pw[100];
+    int i = 0; // 실패 횟수
+
+    int db_ok = 0;
+
+#ifdef USE_DB
+    if(db_init()){
+        db_ok = 1;
+    } else {
+        fprintf(stderr, "[DB] DB 연결 실패 : 파일 로그 + (메모리 회원가입) 로그인으로 진행합니다.\n");
+    }
+#endif
+
+    // DB 연결 실패 시에만 메모리 회원가입 받음
+    if(!db_ok) {
+        printf("회원가입 아이디를 입력하세요 : ");
+        scanf("%99s", ID);
+
+        printf("회원가입 비밀번호를 입력하세요 : ");
+        scanf("%99s", PW);
+    }
+
+    while(1){
+        printf("아이디를 입력하세요 : ");
+        scanf("%99s", usr_id);
+
+        printf("비밀번호를 입력하세요 : ");
+        scanf("%99s", usr_pw);
+
+        int success = 0;
+
+        if(db_ok){
+#ifdef USE_DB
+            // DB 기반 로그인
+            char db_pw[64], db_name[64];
+            int r = db_fetch_user(usr_id, db_pw, sizeof(db_pw), db_name, sizeof(db_name));
+
+            if(r == 1){
+                if(strcmp(db_pw, usr_pw) == 0){
+                    printf("로그인 되었습니다. (%s님)\n", db_name[0] ? db_name : usr_id);
+                    login(usr_id, "SUCCESS");
+                    success = 1;
+                } else {
+                    printf("비밀번호가 틀렸습니다.\n");
+                    login(usr_id, "FAIL_PW");
+                    i++;
+                }
+            } else if(r == 0){
+                printf("아이디가 틀렸습니다.\n");
+                login(usr_id, "FAIL_ID");
+                i++;
+            } else {
+                printf("DB 오류로 로그인 처리에 실패했습니다.\n");
+                login(usr_id, "FAIL_DB");
+                i++;
+            }
+#endif
+        } else {
+            // 메모리 기반 로그인(폴백)
+            if(strcmp(ID, usr_id) == 0){
+                if(strcmp(PW, usr_pw) == 0){
+                    printf("로그인 되었습니다.\n");
+                    login(usr_id, "SUCCESS");
+                    success = 1;
+                } else {
+                    printf("비밀번호가 틀렸습니다.\n");
+                    login(usr_id, "FAIL_PW");
+                    i++;
+                }
+            } else {
+                printf("아이디가 틀렸습니다.\n");
+                login(usr_id, "FAIL_ID");
+                i++;
+            }
+        }
+
+        if(success) break;
+
+        if(i >= 3) {
+            printf("5초 후에 다시 시도해주세요.\n");
+            sleep(5);
+            i = 0;
+        }
+    }
+
+#ifdef USE_DB
+    db_close();
+#endif
+    return 0;
+}
