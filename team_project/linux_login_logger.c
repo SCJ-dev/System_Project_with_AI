@@ -58,7 +58,13 @@ static void db_log_access(const char *user_id, const char *ip_addr, const char *
              esc_id, ip_addr, result);
 
     if(mysql_query(g_conn, query)){
-        fprintf(stderr, "[DB] insert가 틀렸습니다.\n이디;
+        fprintf(stderr, "[DB] insert error : %s\n", mysql_error(g_conn));
+    }
+}
+
+/*
+ * return:
+ *  1 : ID 존재 (out_pw/out_name 호가 틀렸습니다.\n이디;
             login(usr_id, "FAIL_ID");
             i++;
         } else {
