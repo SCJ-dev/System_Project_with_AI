@@ -3,25 +3,25 @@
 #include <unistd.h> // sleep 함수 관련 헤더파일
 #include <time.h> // 시간 관련 헤더 파일
 
-#ifdef USE_DB
+#ifdef USE_DB // ifdef USE_DB : 이 프로그램에 DB 기능을 포함시킬지 말지 결정하는 체크박스
 #include <mariadb/mysql.h> // DB 관련 헤더파일
 #endif
 
 //--------------------------시간 관련 로그-----------------------------
 void get_current_time(char *buf, size_t size) {
-    time_t now = time(NULL); // 현재 시간을 초단위로 저장
-    struct tm *t = localtime(&now); // time 함수에 저장 되어 있는 것을 구조체 형태로 변환
+    time_t now = time(NULL); // time_t : 1970년 1/1일을 기준으로 현재시간을 저장(대부분 초로 저장) / time : 현재 시간을 초단위로 저장
+    struct tm *t = localtime(&now); // localtime : time 함수에 저장 되어 있는 것을 구조체 형태로 변환
     if(!t){
-        snprintf(buf, size, "00-00-00 00:00:00"); // t에 아무것도 저장되어 있지 않으면 buf에 해당 문자열을 저장
+        snprintf(buf, size, "00-00-00 00:00:00"); // localtime 실패 시 buf에 해당 문자열을 저장(로그가 깨지지 않게 하기 위한 방어 코딩)
         return;
     }
-    strftime(buf, size, "%y-%m-%d %H:%M:%S", t); // snprintf = 구조체를 문자 형태로 변환
+    strftime(buf, size, "%y-%m-%d %H:%M:%S", t); // strftime : t 구조체를 문자 형태로 변환
 }
 
 //-------------------------DB 관련 로그---------------------------------
-// 🎯 DB 관련 로그 확인인
+// 🎯 DB 관련 로그 확인
 #ifdef USE_DB
-static MYSQL *g_conn = NULL;
+static MYSQL *g_conn = NULL; // 
 
 static int db_init(void){
     g_conn = mysql_init(NULL);
@@ -109,13 +109,13 @@ static int db_fetch_user(const char *user_id,
 
 //------------------------파일 관련 로그-------------------------------------
 void login(const char *id, const char *result){
-    FILE *fp = fopen("access.log", "a"); // access.log라는 새파일을 만듬(a = 가장 뒤에 글을 추가), 만약 파일이 없을 시 생성
+    FILE *fp = fopen("access.log", "a"); // access.log라는 파일이 없으면 새파일을 만들고 파일이 있으면 이어쓰기를 함 (a = 가장 뒤에 글을 추가), 만약 파일이 없을 시 생성
     if(fp == NULL) return; // 파일 열기 실패 시 종료
 
     char time_buf[32];
     get_current_time(time_buf, sizeof(time_buf));
 
-    fprintf(fp, "TIME : %s IP : LOCALHOST RESULT : %s ID : %s\n", time_buf, result, id);
+    fprintf(fp, "TIME : %s IP : LOCALHOST RESULT : %s ID : %s\n", time_buf, result, id); // ip를 로컬호스트로 고정 기록
     fclose(fp);
 
 #ifdef USE_DB
@@ -134,8 +134,8 @@ int main(void) {
     fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n");
     return 1;
 #else
-    char usr_id[100], usr_pw[100]; // 최대 99개의 문자를 입력 가능
-    int i = 0;
+    char usr_id[100], usr_pw[100]; // 널문자 제외 최대 99개의 문자를 입력 가능
+    int i = 0; // 입력 기회
 
     if(!db_init()){
         fprintf(stderr, "[DB] DB 연결 실패 : 프로그램을 종료합니다.\n");
@@ -144,7 +144,7 @@ int main(void) {
 
     while(1){
         printf("아이디를 입력하세요 : ");
-        scanf("%99s", usr_id);
+        scanf("%99s", usr_id); // 총 99개의 문자 입력 가능능
 
         printf("비밀번호를 입력하세요 : ");
         scanf("%99s", usr_pw);
@@ -178,8 +178,8 @@ int main(void) {
 
         if(i >= 3) {
             printf("5초 후에 다시 시도해주세요.\n");
-            sleep(5);
-            i = 0;
+            sleep(5); // 5초 잠금
+            i = 0; // 기회를 다시 초기화화
         }
     }
 
