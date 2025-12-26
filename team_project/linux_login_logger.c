@@ -29,7 +29,7 @@ static int db_init(void){
 
     if(!mysql_real_connect(g_conn, "127.0.0.1", "secapp", "1234",
                            "security_project", 0, NULL, 0)){ // mysql_real_connect 함수 선언 db 설정할 때 해당 값을 입력하지 않았다면
-        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // access.log 파일에 이것을 기록
+        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // 터미널에 해당 에러메시지 출력
         mysql_close(g_conn); // mysql_close : db 연결종료
         g_conn = NULL; //g_conn을 null 값으로 초기화
         return 0; // 프로그램 정상 종료
@@ -133,7 +133,7 @@ void login(const char *id, const char *result){
 //----------------------------main-----------------------------
 int main(void) {
 #ifndef USE_DB
-    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n"); // 만약 -duse_db로 리눅스 내에 설정이 되어 있지 않을때때
+    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n"); // 만약 -duse_db로 리눅스 내에 설정이 되어 있지 않을때
     return 1;
 #else
     char usr_id[100], usr_pw[100]; // 널문자 제외 최대 99개의 문자를 입력 가능
@@ -158,7 +158,7 @@ int main(void) {
 
         if(r == 1){ // 만약 아이디가 존재시
             if(strcmp(db_pw, usr_pw) == 0){ // pw비교 후 맞는 조건문 출력
-                printf("로그인 되었습니다. (%s님)\n", db_name[0] ? db_name : usr_id); // 처음 db에 들어있는 이름 중 앞글자를 비교해서 똑같은 앞글자가 있으면 이름을 출력 없으면 ID 출력
+                printf("로그인 되었습니다. (%s님)\n", db_name[0] ? db_name : usr_id); // 이름의 첫번째에 글자가 존재하면 이름 출력, 첫번째가 비어있으면 아이디 출력
                 login(usr_id, "SUCCESS");
                 success = 1; 
             } else {
