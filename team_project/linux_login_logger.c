@@ -21,20 +21,20 @@ void get_current_time(char *buf, size_t size) {
 //-------------------------DB 관련 로그---------------------------------
 // 🎯 DB 관련 로그 확인
 #ifdef USE_DB
-static MYSQL *g_conn = NULL; // 
+static MYSQL *g_conn = NULL; // *g_conn은 MYSQL이라는 구조체를 사용하고 그 안에는 현재 null이지만 값은 언제든 변화할 수 있고 변화된 값을 계속해서 유지한다(static 성격)
 
 static int db_init(void){
-    g_conn = mysql_init(NULL);
-    if(!g_conn) return 0;
+    g_conn = mysql_init(NULL); // mysql_init : 구조체를 초기화하는 함수
+    if(!g_conn) return 0; // g_conn이 비어있다면 프로그램 종료
 
     if(!mysql_real_connect(g_conn, "127.0.0.1", "secapp", "1234",
-                           "security_project", 0, NULL, 0)){
-        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn));
-        mysql_close(g_conn);
-        g_conn = NULL;
-        return 0;
+                           "security_project", 0, NULL, 0)){ // mysql_real_connect 함수 선언 db 설정할 때 해당 값을 입력하지 않았다면
+        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // access.log 파일에 이것을 기록
+        mysql_close(g_conn); // mysql_close : db 연결종료
+        g_conn = NULL; //g_conn을 null 값으로 초기화
+        return 0; // 프로그램 정상 종료
     }
-    return 1;
+    return 1; //프로그램 종료
 }
 
 static void db_close(void){
@@ -74,36 +74,38 @@ static int db_fetch_user(const char *user_id,
     if(!g_conn) return -1;
 
     char esc_id[128];
-    unsigned long id_len = strlen(user_id);
-    if(id_len > 60) id_len = 60;
+    unsigned long id_len = strlen(user_id); // unsgined = 부호 없는 정수 타입 = admin의 길이는 5
+    if(id_len > 60) id_len = 60; // 아이디가 너무 길면 60글자만 인정
     mysql_real_escape_string(g_conn, esc_id, user_id, id_len);
 
-    char query[256];
+    char query[256]; // DB에 보낼 쿼리를 담을 256칸 짜리 표를 준비
     snprintf(query, sizeof(query),
              "SELECT PASSWORD, NAME FROM USER_TB WHERE ID='%s' LIMIT 1",
-             esc_id);
+             esc_id); // 아이디가 admin인 pw와 name을 딱 하나만 찾음
 
-    if(mysql_query(g_conn, query)){
-        fprintf(stderr, "[DB] select error : %s\n", mysql_error(g_conn));
+    if(mysql_query(g_conn, query)){ // mysql_query : C가 DB 서버에게 명령어를 전달하는 역할(g_conn 연결통로, query 명령어 종이)
+        fprintf(stderr, "[DB] select error : %s\n", mysql_error(g_conn)); // 만약 실패시 에러메시지 0아니면 -1을 출력하고 종료
         return -1;
     }
 
-    MYSQL_RES *res = mysql_store_result(g_conn);
-    if(!res){
-        fprintf(stderr, "[DB] store_result error : %s\n", mysql_error(g_conn));
+    MYSQL_RES *res = mysql_store_result(g_conn); // DB가 준 결과물을 'res'라는 메모리에 담음
+    
+    if(!res){ // 만약 res에 값이 없다면 에러 출력
+        fprintf(stderr, "[DB] store_result error : %s\n", mysql_error(g_conn)); // mysql_error = 어떤 이유 때문에 실행이 안되는지에 대한 것을 출력
         return -1;
     }
 
-    MYSQL_ROW row = mysql_fetch_row(res);
-    if(!row){
-        mysql_free_result(res);
+    MYSQL_ROW row = mysql_fetch_row(res); // res안에 실제 데이터가 들어있는 첫 번째 줄을 꺼내서 row에 저장
+    if(!row){ // row가 비어있으면
+        mysql_free_result(res); // 쿼리 결과 집합이 점유하던 메모리 헤제
         return 0;
     }
-
-    snprintf(out_pw, out_pw_sz, "%s", row[0] ? row[0] : "");
-    snprintf(out_name, out_name_sz, "%s", row[1] ? row[1] : "");
-    mysql_free_result(res);
-    return 1;
+    
+    // res의 값이 들어있으면
+    snprintf(out_pw, out_pw_sz, "%s", row[0] ? row[0] : ""); // pw값이 있으면 그대로 없으면 ""을 out_pw에 복사
+    snprintf(out_name, out_name_sz, "%s", row[1] ? row[1] : ""); // name값이 있으면 그대로 없으면 ""을 out_name에 복사
+    mysql_free_result(res); // 쿼리 결과 집합이 점유하던 메모리 헤제
+    return 1; // ID 존재
 }
 #endif
 
@@ -131,14 +133,14 @@ void login(const char *id, const char *result){
 //----------------------------main-----------------------------
 int main(void) {
 #ifndef USE_DB
-    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n");
+    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n"); // 만약 -duse_db로 리눅스 내에 설정이 되어 있지 않을때때
     return 1;
 #else
     char usr_id[100], usr_pw[100]; // 널문자 제외 최대 99개의 문자를 입력 가능
     int i = 0; // 입력 기회
 
     if(!db_init()){
-        fprintf(stderr, "[DB] DB 연결 실패 : 프로그램을 종료합니다.\n");
+        fprintf(stderr, "[DB] DB 연결 실패 : 프로그램을 종료합니다.\n"); 
         return 1;
     }
 
@@ -149,41 +151,41 @@ int main(void) {
         printf("비밀번호를 입력하세요 : ");
         scanf("%99s", usr_pw);
 
-        int success = 0;
+        int success = 0; // 성공
 
         char db_pw[64], db_name[64];
         int r = db_fetch_user(usr_id, db_pw, sizeof(db_pw), db_name, sizeof(db_name));
 
-        if(r == 1){
-            if(strcmp(db_pw, usr_pw) == 0){
-                printf("로그인 되었습니다. (%s님)\n", db_name[0] ? db_name : usr_id);
+        if(r == 1){ // 만약 아이디가 존재시
+            if(strcmp(db_pw, usr_pw) == 0){ // pw비교 후 맞는 조건문 출력
+                printf("로그인 되었습니다. (%s님)\n", db_name[0] ? db_name : usr_id); // 처음 db에 들어있는 이름 중 앞글자를 비교해서 똑같은 앞글자가 있으면 이름을 출력 없으면 ID 출력
                 login(usr_id, "SUCCESS");
-                success = 1;
+                success = 1; 
             } else {
                 printf("아이디 또는 비밀번호가 틀렸습니다.\n");
                 login(usr_id, "FAIL_PW");
                 i++;
             }
-        } else if(r == 0){
+        } else if(r == 0){ // 만약 아이디가 존재하지 않을 시
             printf("아이디 또는 비밀번호가 틀렸습니다.\n");
             login(usr_id, "FAIL_ID");
             i++;
-        } else {
+        } else { // DB 오류
             printf("DB 오류로 로그인 처리에 실패했습니다.\n");
             login(usr_id, "FAIL_DB");
             i++;
         }
 
-        if(success) break;
+        if(success) break; // success 발생시 프로그램 반복문 종료
 
         if(i >= 3) {
             printf("5초 후에 다시 시도해주세요.\n");
             sleep(5); // 5초 잠금
-            i = 0; // 기회를 다시 초기화화
+            i = 0; // 기회를 다시 초기화
         }
     }
 
-    db_close();
-    return 0;
+    db_close(); // 메모리 반납
+    return 0; // 프로그램 정상 종료
 #endif
 }
