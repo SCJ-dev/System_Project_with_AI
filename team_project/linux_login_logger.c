@@ -2,6 +2,7 @@
 #include <string.h> // strcmp, strlen 등 문자열 처리 관련 헤더파일
 #include <unistd.h> // sleep 함수 관련 헤더파일
 #include <time.h> // 시간 관련 헤더 파일
+#include <stdlib.h> // getenv, atoi
 
 #ifdef USE_DB // ifdef USE_DB : 이 프로그램에 DB 기능을 포함시킬지 말지 결정하는 체크박스
 #include <mariadb/mysql.h> // DB 관련 헤더파일
@@ -21,20 +22,34 @@ void get_current_time(char *buf, size_t size) {
 //-------------------------DB 관련 로그---------------------------------
 // 🎯 DB 관련 로그 확인
 #ifdef USE_DB
-static MYSQL *g_conn = NULL; // *g_conn은 MYSQL이라는 구조체를 사용하고 그 안에는 현재 null이지만 값은 언제든 변화할 수 있고 변화된 값을 계속해서 유지한다(static 성격)
+static MYSQL *g_conn = NULL; // *g_conn은 MYSQL이라는 구조체를 가리키는 포인터이고 프로그램 실행 동안 유지되는 DB 연결 핸들을 파일 내부에서만 사용하도록 static으로 선언
 
 static int db_init(void){
     g_conn = mysql_init(NULL); // mysql_init : 구조체를 초기화하는 함수
-    if(!g_conn) return 0; // g_conn이 비어있다면 프로그램 종료
+    if(!g_conn) return 0; // g_conn이 비어있다면 초기화 실패
+    
+    const char *db_host = getenv("DB_HOST");
+    const char *db_user = getenv("DB_USER");
+    const char *db_pass = getenv("DB_PASS");
+    const char *db_name = getenv("DB_NAME");
+    
+    if(!db_host) db_host = "127.0.0.1";
+    
+    
+    if(!db_user || !db_pass || !db_name){
+        fprintf(stderr, "[DB] missing env : DB_USER/DB_PASS/DB_NAME\n");
+        mysql_close(g_conn);
+        g_conn = NULL;
+        return 0;
+    }
 
-    if(!mysql_real_connect(g_conn, "127.0.0.1", "secapp", "1234",
-                           "security_project", 0, NULL, 0)){ // mysql_real_connect 함수 선언 db 설정할 때 해당 값을 입력하지 않았다면
-        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // 터미널에 해당 에러메시지 출력
+    if(!mysql_real_connect(g_conn, db_host, db_user, db_pass, db_name, 0, NULL, 0)){ // mysql_real_connect 함수 선언 db 서버 연결 시도
+        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // 실패할 시 터미널에 해당 에러메시지 출력
         mysql_close(g_conn); // mysql_close : db 연결종료
         g_conn = NULL; //g_conn을 null 값으로 초기화
-        return 0; // 프로그램 정상 종료
+        return 0; // 연결 실패
     }
-    return 1; //프로그램 종료
+    return 1; // 연결 성공
 }
 
 static void db_close(void){
@@ -133,7 +148,7 @@ void login(const char *id, const char *result){
 //----------------------------main-----------------------------
 int main(void) {
 #ifndef USE_DB
-    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n"); // 만약 -duse_db로 리눅스 내에 설정이 되어 있지 않을때
+    fprintf(stderr, "DB 기반 로그인 전용입니다. -DUSE_DB로 컴파일하세요.\n"); // 만약 -DUSE_DB로 리눅스 내에 설정이 되어 있지 않을때
     return 1;
 #else
     char usr_id[100], usr_pw[100]; // 널문자 제외 최대 99개의 문자를 입력 가능
@@ -185,7 +200,7 @@ int main(void) {
         }
     }
 
-    db_close(); // 메모리 반납
+    db_close(); // DB 연결 종료
     return 0; // 프로그램 정상 종료
 #endif
 }
