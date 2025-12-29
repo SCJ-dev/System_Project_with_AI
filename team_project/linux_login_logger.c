@@ -28,23 +28,23 @@ static int db_init(void){
     g_conn = mysql_init(NULL); // mysql_init : 구조체를 초기화하는 함수
     if(!g_conn) return 0; // g_conn이 비어있다면 초기화 실패
     
-    const char *db_host = getenv("DB_HOST");
-    const char *db_user = getenv("DB_USER");
-    const char *db_pass = getenv("DB_PASS");
-    const char *db_name = getenv("DB_NAME");
+    const char *db_host = getenv("DB_HOST"); // DB 서버 주소
+    const char *db_user = getenv("DB_USER"); // DB 사용자 계정
+    const char *db_pass = getenv("DB_PASS"); // DB 비번
+    const char *db_name = getenv("DB_NAME"); // DB 이름
     
     if(!db_host) db_host = "127.0.0.1";
     
     
-    if(!db_user || !db_pass || !db_name){
-        fprintf(stderr, "[DB] missing env : DB_USER/DB_PASS/DB_NAME\n");
-        mysql_close(g_conn);
-        g_conn = NULL;
+    if(!db_user || !db_pass || !db_name){ // 하나라도 맞지 않으면
+        fprintf(stderr, "[DB] missing env : DB_USER/DB_PASS/DB_NAME\n"); // 터미널에 에러 사유를 출력
+        mysql_close(g_conn); // DB 연결 종료
+        g_conn = NULL; // g_conn을 비워줌
         return 0;
     }
 
     if(!mysql_real_connect(g_conn, db_host, db_user, db_pass, db_name, 0, NULL, 0)){ // mysql_real_connect 함수 선언 db 서버 연결 시도
-        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // 실패할 시 터미널에 해당 에러메시지 출력
+        fprintf(stderr, "[DB] connect error : %s\n", mysql_error(g_conn)); // 실패할 시 에러메시지 출력
         mysql_close(g_conn); // mysql_close : db 연결종료
         g_conn = NULL; //g_conn을 null 값으로 초기화
         return 0; // 연결 실패
@@ -60,20 +60,20 @@ static void db_close(void){
 }
 
 static void db_log_access(const char *user_id, const char *ip_addr, const char *result){
-    if(!g_conn) return;
+    if(!g_conn) return; // g_conn이 비어있으면 실행안됨
 
-    char esc_id[128];
-    unsigned long id_len = strlen(user_id);
-    if(id_len > 60) id_len = 60;
-    mysql_real_escape_string(g_conn, esc_id, user_id, id_len);
+    char esc_id[128]; // 이스케이프된 아이디를 저정하는 버퍼
+    unsigned long id_len = strlen(user_id); // 유저아이디의 길이를 숫자로 표현
+    if(id_len > 60) id_len = 60; // 입력한 유저아이디가 널 문자 포함 60글자 이상이 되면 
+    mysql_real_escape_string(g_conn, esc_id, user_id, id_len); // sql 인젝션 공격 위험 완화
 
     char query[512];
     snprintf(query, sizeof(query),
              "INSERT INTO ACCESS_LOG (USER_ID, IP_ADDR, RESULT) VALUES ('%s','%s','%s')",
-             esc_id, ip_addr, result);
+             esc_id, ip_addr, result); // 구조체를 문자열로 저장
 
     if(mysql_query(g_conn, query)){
-        fprintf(stderr, "[DB] insert error : %s\n", mysql_error(g_conn));
+        fprintf(stderr, "[DB] insert error : %s\n", mysql_error(g_conn)); // 에러 발생시 에러 내용 출력
     }
 }
 
