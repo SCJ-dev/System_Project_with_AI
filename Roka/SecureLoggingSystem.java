@@ -1,107 +1,160 @@
-import javax.swing.*; // 윈도우 창(GUI)을 만들기 위한 도구
-import java.awt.*; // 색상, 폰트 등 디자인 도구
-import java.io.*; // 파일 쓰기(Writer)를 위한 도구
-import java.time.LocalDateTime; // 현재 시각 가져오기
+import javax.swing.*;
+import java.awt.*;
+import java.io.*;
+import java.net.Socket;
+import java.util.*;
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Random;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import com.fazecast.jSerialComm.*;
 
 public class SecureLoggingSystem extends JFrame {
-    private JPanel statusPanel; // 화면 상단 배경 패널
-    private JLabel statusLabel; // "정상/EMERGENCY" 글자 라벨
-    private DefaultListModel<String> logModel; // 로그 목록을 저장할 리스트 모델
-    private boolean isAlertActive = false; // 현재 경고 상태인지 저장
+    private String serverIp;
+    private String secretKey;
+    private int serverPort;
+    private String targetComPort;
+    
+    private volatile boolean isAlertActive = false;
+    private SerialPort comPort;
+    private JPanel statusPanel;
+    private JLabel statusLabel;
+    private DefaultListModel<String> logModel = new DefaultListModel<>();
+    private final String LOG_FILE_NAME = "EMERGENCYLOG.txt";
 
-    //관제 서버와 공유할 로그 파일 이름(경로가 같아야 함)
-    private final String Log_FILE_NAME = "EMERGENCYLOG.txt";
-
-    public SecureLoggingSystem(){
-        setTitle("국방 보안 시스템(기지) v1.0");
-        setSize(550, 450);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // 창 닫으면 종료
-        setLayout(new BorderLayout()); // 동서남북 배치 방식 사용
-
-        //1. 상단 상태 표시 패널(기본 회색)
-        statusPanel = new JPanel();
-        statusPanel.setBackground(Color.GRAY);
-        statusLabel = new JLabel("시스템 대기 중...");
-        statusLabel.setForeground(Color.BLACK); // 글자 색
-        statusLabel.setFont(new Font("맑은 고딕", Font.BOLD, 22));
-        statusPanel.add(statusLabel);
-        add(statusPanel, BorderLayout.NORTH); // 북쪽에 배치
-
-        //2. 중앙 로그 목록 (스크롤 기능 포함)
-        logModel = new DefaultListModel<>();
-        JList<String> loglist = new JList<>(logModel);
-        add(new JScrollPane(loglist), BorderLayout.CENTER); // 중앙에 배치
-
-        //3. 하단 경보 리셋 버튼
-        JButton reseButton = new JButton("경보 해제 및 시스템 재가동");
-        reseButton.addActionListener(e -> isAlertActive = false); // 클릭 시 경보 상태 꺼짐
-        add(reseButton, BorderLayout.SOUTH); // 남쪽에 배치
-
-        //프로그램 시작과 듕시에 실시간 센서 감시 시작(스레드 실행)
-        startSensorMonitoring();
+    public SecureLoggingSystem() {
+        if (!loadConfig()) {
+            JOptionPane.showMessageDialog(null, "초소 설정 파일(config.properties)을 찾을 수 없습니다.");
+            System.exit(0);
+        }
+        initUI();
+        startMonitoring();
     }
 
-    // [중요] 메인 화면과 별개로 돌아가는 감시 코드
-    private void startSensorMonitoring(){
-        new Thread(() -> {
-            Random random = new Random();
-            try {
-                while (true) {
-                    // 15% 확률로 침입자 발생(1), 없음(0)
-                    int sensorValue = (random.nextInt(100) <15) ? 1 : 0;
+    private boolean loadConfig() {
+        // [보안/안정성] .jar 실행 위치에서 파일을 찾도록 절대 경로 인식 보완
+        File configFile = new File(System.getProperty("user.dir"), "config.properties");
+        try (InputStream in = new FileInputStream(configFile)) {
+            Properties p = new Properties();
+            p.load(in);
+            serverIp = p.getProperty("ROKA_SERVER_IP");
+            serverPort = Integer.parseInt(p.getProperty("ROKA_SERVER_PORT"));
+            secretKey = p.getProperty("AES_SECRET_KEY");
+            targetComPort = p.getProperty("COM_PORT");
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
-                    if (sensorValue == 1 && !isAlertActive) {
-                        triggerAlarm(); // 침입 감지 시 경보 메서드 실행
-                    } else if (sensorValue == 0 && !isAlertActive) {
-                        updateUI(Color.green, "상태 : 이상 없음(실시간 감시 중");
+    private void initUI() {
+        setTitle("무인 경계 시스템 - 초소");
+        setSize(550, 450);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+
+        statusPanel = new JPanel();
+        statusPanel.setBackground(new Color(30, 50, 30)); 
+        statusLabel = new JLabel("경계 감시 중 - 이상 없음");
+        statusLabel.setForeground(Color.WHITE);
+        statusLabel.setFont(new Font("맑은 고딕", Font.BOLD, 18));
+        statusPanel.add(statusLabel);
+
+        JList<String> logList = new JList<>(logModel);
+        logList.setBackground(Color.BLACK);
+        logList.setForeground(Color.GREEN);
+        logList.setFont(new Font("돋움체", Font.PLAIN, 14));
+
+        JButton btnReset = new JButton("경보 해제 및 감시 재개");
+        btnReset.setFont(new Font("맑은 고딕", Font.BOLD, 14));
+        btnReset.addActionListener(e -> {
+            isAlertActive = false;
+            if (comPort != null && comPort.isOpen()) comPort.flushIOBuffers();
+            updateUI(new Color(30, 50, 30), "경계 감시 중 - 이상 없음");
+            String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            String resetMsg = "[" + now + "] 시스템 리셋: 감시 재개";
+            logModel.insertElementAt(resetMsg, 0);
+            reportToDivision(resetMsg); 
+        });
+
+        add(statusPanel, BorderLayout.NORTH);
+        add(new JScrollPane(logList), BorderLayout.CENTER);
+        add(btnReset, BorderLayout.SOUTH);
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    private void startMonitoring() {
+        new Thread(() -> {
+            comPort = SerialPort.getCommPort(targetComPort); 
+            comPort.setBaudRate(9600);
+            comPort.setComPortTimeouts(SerialPort.TIMEOUT_NONBLOCKING, 0, 0);
+            if (comPort.openPort()) {
+                comPort.addDataListener(new SerialPortDataListener() {
+                    @Override
+                    public int getListeningEvents() { return SerialPort.LISTENING_EVENT_DATA_AVAILABLE; }
+                    @Override
+                    public void serialEvent(SerialPortEvent event) {
+                        try {
+                            Thread.sleep(20); 
+                            byte[] readBuffer = new byte[comPort.bytesAvailable()];
+                            int numRead = comPort.readBytes(readBuffer, readBuffer.length);
+                            String line = new String(readBuffer, 0, numRead, StandardCharsets.UTF_8).trim();
+                            if (line.toUpperCase().contains("ALERT") && !isAlertActive) {
+                                isAlertActive = true; 
+                                processIntrusion(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+                            }
+                        } catch (Exception e) { e.printStackTrace(); }
                     }
-                    Thread.sleep(1000); // 1초마다 센서 체크 (부하 방지)
-                }
-            } catch (InterruptedException e) { e.printStackTrace(); }
+                });
+            } else {
+                SwingUtilities.invokeLater(() -> logModel.insertElementAt("[오류] 아두이노 연결 실패: " + targetComPort, 0));
+            }
         }).start();
     }
 
-    // 침입 발생시 처리 로직
-    private void triggerAlarm(){
-        isAlertActive = true; // 경보 상태 켬
-        // 현재 시각 포맷 설정 (ex : yyyy-MM-dd hh:mm:ss)
-        String time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("날짜 : yyyy-MM-dd | 시간 : HH:mm:ss"));
-        String logMessage = "[" + time + "] !!! 미상물체 발견 !!!";
-
-        updateUI(Color.RED, "!!! 경고 !!!");
-
-        //UI 리스트에 로그 메시지 추가(맨 위에 삽입)
-        SwingUtilities.invokeLater(() -> logModel.insertElementAt(logMessage, 0));
-
-        // 텍스트 파일에 해당 로그 실시간 저장
-        saveLogToFile(logMessage);
+    private void processIntrusion(String time) {
+        String msg = "[" + time + "] 🚨 침입 감지 : 미상물체 식별됨!";
+        updateUI(Color.RED, "!!! 비상 상황 : 사단 보고 중 !!!");
+        SwingUtilities.invokeLater(() -> logModel.insertElementAt(msg, 0));
+        saveToFile(msg);     
+        reportToDivision(msg); 
     }
 
-    // 한글 깨지지 않게 MS949 방식으로 파일에 기록
-    private void saveLogToFile(String message) {
-        try (FileOutputStream fos = new FileOutputStream(Log_FILE_NAME, true);
-            OutputStreamWriter osw = new OutputStreamWriter(fos, "ms949");
-            BufferedWriter bw = new BufferedWriter(osw)) {
+    private void saveToFile(String msg) {
+        // [수정] .jar 실행 위치에 로그 파일 생성 및 UTF-8 인코딩 보완
+        File logFile = new File(System.getProperty("user.dir"), LOG_FILE_NAME);
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(logFile, true), StandardCharsets.UTF_8))) {
+            bw.write(msg); bw.newLine();
+        } catch (IOException e) { e.printStackTrace(); }
+    }
 
-                bw.write(message); // 메시지 작성
-                bw.newLine(); // 줄바꿈
-                bw.flush(); // 버퍼 비우고 즉시 저장
-                System.out.println("로그 저장 완료 : " + message);
-            } catch (IOException e) {
-                System.err.println("파일 기록 오류 : " + e.getLocalizedMessage());
+    private void reportToDivision(String msg) {
+        new Thread(() -> {
+            try (Socket s = new Socket(serverIp, serverPort);
+                 PrintWriter out = new PrintWriter(s.getOutputStream(), true)) {
+                out.println(encrypt(msg));
+            } catch (Exception e) { 
+                SwingUtilities.invokeLater(() -> logModel.insertElementAt("[오류] 사단 보고 실패: 서버 연결 불가", 0));
             }
+        }).start();
     }
-    // UI 색상과 텍스트 변경 보조 매서드
-    private void updateUI(Color color, String text) {
+
+    private String encrypt(String data) throws Exception {
+        byte[] keyBytes = Arrays.copyOf(secretKey.getBytes(StandardCharsets.UTF_8), 16);
+        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
+        Cipher c = Cipher.getInstance("AES");
+        c.init(Cipher.ENCRYPT_MODE, keySpec);
+        return Base64.getEncoder().encodeToString(c.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private void updateUI(Color c, String t) {
         SwingUtilities.invokeLater(() -> {
-            statusPanel.setBackground(color);
-            statusLabel.setText(text);
+            statusPanel.setBackground(c);
+            statusLabel.setText(t);
         });
-        }
-        public static void main(String[] args) {
-            new SecureLoggingSystem().setVisible(true); // 프로그램 창 띄우기
-        }
-    
+    }
+
+    public static void main(String[] args) { new SecureLoggingSystem(); }
 }
