@@ -1,70 +1,121 @@
-import java.io.File;
-import java.io.RandomAccessFile;
+import javax.swing.*;
+import java.awt.*;
+import java.io.*;
+import java.net.*;
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Properties;
 
-public class Roka {
-    public static void main(String[] args){
-        //C 프로그램이 fopen으로 열었던 파일명
-        File logFile = new File("EMERGENCYLOG.txt");
-        // 파일의 읽기 위치를 기억하는 '커서', 이미 읽은 로그 중복 방지
-        long lastKnownCursor = 0; 
+public class Roka extends JFrame {
+    private String secretKey;
+    private int serverPort;
 
-        System.out.println("=======================================");
-        System.out.println("      [사단지휘통제실 실시간 관제 서버]    ");
-        System.out.println("    서버 상태 : 정상 가동 중 (감시 시작)    ");
-        System.out.println("=======================================");
+    private JTextArea logArea;
+    private JLabel statusLabel;
+    private JPanel statusPanel;
+    // 로그 파일 이름 설정 (초소와 동일하게 맞췄습니다)
+    private final String LOG_FILE_NAME = "EMERGENCYLOG.txt";
 
-        try {
-            // 관제 서버 다운이 되면 안 되므로 무한 감시
-            while(true) {
-                //1. 파일이 실제로 존재하는지 확인(C프로그램을 통해 먼저 파일을 생성시켜야함)
-                if(logFile.exists()){
+    public Roka() {
+        if (!loadConfig()) {
+            JOptionPane.showMessageDialog(null, "사단 설정 파일(config.properties)을 찾을 수 없습니다.");
+            System.exit(0);
+        }
+        initUI();
+        startServer();
+    }
 
-                    //2. 현재 디스크에 저장된 파일의 전체 길이 측정
-                    long fileLength = logFile.length();
-                    
-                    //3. 현재 파일 길이가 내가 마지막으로 읽었던 지점보다 크면
-                    //-> 즉, C 프로그램이 파일에 새로운 내용을 추가했다는 뜻
-                    if (fileLength > lastKnownCursor) {
-
-                        //4. 파일 읽기 전용("r")으로 엽니다.
-                        //RandomAccessFile은 파일 내 어디든 점프(seek)할 수 있는 특수 도구
-                        RandomAccessFile raf = new RandomAccessFile(logFile, "r");
-
-                        //5. [지점 이동] 마지막으로 읽었던 그 지점으로 이동
-                        raf.seek(lastKnownCursor);
-
-                        String line;
-                        //6. [신규 로그 추출] 이동한 지점부터 한 줄씩 끝까지 읽어옴
-                        while((line = raf.readLine()) != null){
-
-                            line = new String(line.getBytes ("ISO-8859-1"), "EUC-KR"); // 한글 깨짐 방지
-                            
-                            if(line.contains("미상물체") || line.contains("출현")){// emergency.txt 파일에서 미상물체, 출현이라는 키워드가 있는지 검사
-                                System.out.println("\n[!]-----------------------------------[!]");
-                                java.awt.Toolkit.getDefaultToolkit().beep();
-                                System.out.println("  sc대대 : " + line); // C에서 남긴 타임스탬프와 메시지가 출력.
-                                System.out.println("  [경고] ooGP 전방 미상 물체 식별 [경고]  ");
-                                System.out.println("[!]-----------------------------------[!]");
-                            }
-                            else {
-                                // 위험 키워드가 없는 일반 정보성 로그일 경우
-                                System.out.println(">> 신규 로그 수신 : " + line);
-                            }
-                        }
-                        // 7. [위치 업데이트] 마지막으로 읽기가 끝난 지점의 좌표를 lastKnownCursor에 저장
-                        // 다음에 루프를 돌 때 이 지점부터 읽기 시작
-                        lastKnownCursor = raf.getFilePointer();
-
-                        // 8. 파일 사용 끝났으므로 자원 반납
-                        raf.close();
-                    }
-                }
-                // [부하 방지] 1초 1000ms 동안 휴식
-                Thread.sleep(1000);
-            }
-        } catch (Exception e){
-            //예외 발생 시 에러 메시지 출력
-            System.out.println("관제 중 오류 발생 : " + e.getMessage());
+    private boolean loadConfig() {
+        File configFile = new File(System.getProperty("user.dir"), "config.properties");
+        try (InputStream in = new FileInputStream(configFile)) {
+            Properties p = new Properties();
+            p.load(in);
+            serverPort = Integer.parseInt(p.getProperty("ROKA_SERVER_PORT"));
+            secretKey = p.getProperty("AES_SECRET_KEY");
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
+
+    private void initUI() {
+        setTitle("대한민국 육군 사단 본부 보안 통제 시스템");
+        setSize(600, 500);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+
+        statusPanel = new JPanel();
+        statusPanel.setBackground(new Color(30, 50, 30));
+        statusLabel = new JLabel("전 부대 경계 태세 이상 없음");
+        statusLabel.setForeground(Color.WHITE);
+        statusLabel.setFont(new Font("맑은 고딕", Font.BOLD, 20));
+        statusPanel.add(statusLabel);
+
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setBackground(Color.BLACK);
+        logArea.setForeground(Color.CYAN);
+        logArea.setFont(new Font("돋움체", Font.PLAIN, 14));
+
+        add(statusPanel, BorderLayout.NORTH);
+        add(new JScrollPane(logArea), BorderLayout.CENTER);
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    private void startServer() {
+        new Thread(() -> {
+            try (ServerSocket ss = new ServerSocket(serverPort)) {
+                while (true) {
+                    try (Socket s = ss.accept();
+                         BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()))) {
+                        String encryptedMsg = in.readLine();
+                        if (encryptedMsg != null) {
+                            String decryptedMsg = decrypt(encryptedMsg);
+                            
+                            // [추가된 로직] 수신된 메시지를 파일에 저장
+                            saveToFile(decryptedMsg);
+
+                            if (decryptedMsg.contains("리셋")) {
+                                updateStatus(new Color(30, 50, 30), "전 부대 경계 태세 이상 없음");
+                            } else {
+                                updateStatus(Color.RED, "!!! 비상 상황 발생 !!!");
+                            }
+                            SwingUtilities.invokeLater(() -> logArea.append(decryptedMsg + "\n"));
+                        }
+                    } catch (Exception e) { e.printStackTrace(); }
+                }
+            } catch (IOException e) { 
+                JOptionPane.showMessageDialog(null, "포트 충돌: 이미 서버가 실행 중이거나 포트가 점유되었습니다.");
+            }
+        }).start();
+    }
+
+    // [추가된 로직] 사단용 파일 저장 함수
+    private void saveToFile(String msg) {
+        File logFile = new File(System.getProperty("user.dir"), LOG_FILE_NAME);
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
+                new FileOutputStream(logFile, true), StandardCharsets.UTF_8))) {
+            bw.write(msg); bw.newLine();
+        } catch (IOException e) { e.printStackTrace(); }
+    }
+
+    private void updateStatus(Color c, String t) {
+        SwingUtilities.invokeLater(() -> {
+            statusPanel.setBackground(c);
+            statusLabel.setText(t);
+        });
+    }
+
+    private String decrypt(String data) throws Exception {
+        byte[] keyBytes = Arrays.copyOf(secretKey.getBytes(StandardCharsets.UTF_8), 16);
+        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
+        Cipher c = Cipher.getInstance("AES");
+        c.init(Cipher.DECRYPT_MODE, keySpec);
+        return new String(c.doFinal(Base64.getDecoder().decode(data)), StandardCharsets.UTF_8);
+    }
+
+    public static void main(String[] args) { new Roka(); }
 }
