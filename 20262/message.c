@@ -16,7 +16,7 @@ int main(){
 	
 	for(int i = 0; i < n; i++){
 		printf("[전문 %d] 입력> ", i+1);
-		scanf(" %[^\n]s", st[i]);
+		scanf(" %[^\n]", st[i]);
 		len[i] = strlen(st[i]);
 	}
 
